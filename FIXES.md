@@ -4,6 +4,31 @@ Registro de correcciones y mejoras aplicadas al proyecto.
 
 ---
 
+## [2026-06-07] OCR de carruseles TikTok (/photo/ URLs)
+
+### Problema
+Las URLs de tipo `/photo/` (carruseles deslizables) no son soportadas por yt-dlp.
+Todo el contenido está en imágenes — no hay audio útil.
+
+### Solución
+Se usa el mismo patrón CDP que para colecciones: Playwright abre la URL con
+Brave + cookies TikTok del usuario, CDP intercepta los bytes de las imágenes
+mientras el browser las descarga, luego se bajan con el Referer correcto.
+
+```
+/photo/ URL detectada
+  → Playwright (Brave + cookies TikTok)
+  → CDP captura requestId de cada imagen tiktokcdn.com/photomode/*
+  → urllib descarga las imágenes con Referer: tiktok.com
+  → OCR con rapidocr-onnxruntime
+  → LLM resume el texto extraído
+```
+
+### Archivos modificados
+- `src/transcripts.py` — función `_playwright_carousel()`
+
+---
+
 ## [2026-06-07] OCR de imágenes en videos sin voz
 
 ### Problema

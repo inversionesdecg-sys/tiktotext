@@ -6,6 +6,7 @@ Extracción de transcripciones:
 
 Todas las funciones públicas devuelven (transcript: str, description: str).
 """
+import asyncio
 import glob
 import json
 import os
@@ -134,22 +135,127 @@ def _get_carousel_ocr(url: str) -> str:
 
 
 def _download_carousel_images(url: str, tmpdir: str) -> list:
-    """Intenta descargar las imágenes individuales del carrusel.
+    """Descarga imágenes del carrusel TikTok vía Playwright.
 
-    yt-dlp puede descargarlas con -f 'Image' en posts de tipo foto.
+    TikTok /photo/ URLs no son soportadas por yt-dlp.
+    Usamos Playwright headless para cargar la página y obtener las URLs
+    de imagen del DOM (tiktokcdn.com), luego las descargamos.
     """
-    out = os.path.join(tmpdir, "img_%(playlist_index)s.%(ext)s")
-    subprocess.run(
-        ["yt-dlp", "--no-warnings", "--no-playlist",
-         "-f", "Image/mhtml/best",
-         "-o", out, url],
-        capture_output=True, timeout=90,
-    )
-    images = sorted(
-        os.path.join(tmpdir, f) for f in os.listdir(tmpdir)
-        if os.path.splitext(f)[1].lower() in _IMAGE_EXTS
-    )
-    return images
+    import asyncio
+    return asyncio.run(_playwright_carousel(url, tmpdir))
+
+
+async def _playwright_carousel(url: str, tmpdir: str) -> list:
+    """Abre la URL del carrusel con Brave + cookies TikTok del usuario.
+
+    Usa CDP para capturar los bytes de cada imagen mientras el browser
+    las descarga — mismo patrón que url_fetchers para colecciones.
+    """
+    import base64
+    try:
+        from playwright.async_api import async_playwright
+        from config.settings import TIKTOK_COOKIES, get_browser_path
+    except ImportError as e:
+        print(f"  [OCR carrusel] Import error: {e}")
+        return []
+
+    # Cargar cookies TikTok del usuario
+    cookies: list = []
+    try:
+        with open(TIKTOK_COOKIES, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) < 7:
+                    continue
+                domain, _flag, path, _secure, _expiry, name, value = parts[:7]
+                if "tiktok.com" in domain and name and value:
+                    cookies.append({"name": name, "value": value,
+                                    "domain": ".tiktok.com", "path": "/"})
+    except Exception as e:
+        print(f"  [OCR carrusel] No se pudieron cargar cookies: {e}")
+
+    try:
+        browser_path = get_browser_path()
+    except Exception:
+        browser_path = None
+
+    try:
+        async with async_playwright() as p:
+            launch_kwargs = {"headless": True}
+            if browser_path:
+                launch_kwargs["executable_path"] = browser_path
+
+            browser = await p.chromium.launch(**launch_kwargs)
+            ctx = await browser.new_context(viewport={"width": 1280, "height": 900})
+            if cookies:
+                await ctx.add_cookies(cookies)
+
+            page = await ctx.new_page()
+
+            # CDP: interceptar bytes de imágenes del carrusel mientras se descargan
+            cdp = await ctx.new_cdp_session(page)
+            await cdp.send("Network.enable")
+
+            # Mapear requestId → URL para imágenes del carrusel
+            carousel_requests: dict = {}
+
+            def _on_request(event: dict) -> None:
+                req = event.get("request", {})
+                req_url = req.get("url", "")
+                if "tiktokcdn.com" in req_url and "photomode" in req_url:
+                    rid = event.get("requestId")
+                    if rid:
+                        carousel_requests[rid] = req_url
+
+            cdp.on("Network.requestWillBeSent", _on_request)
+
+            try:
+                await page.goto(url, timeout=20000, wait_until="domcontentloaded")
+            except Exception:
+                pass
+            await asyncio.sleep(6)
+
+            await browser.close()
+
+        if not carousel_requests:
+            print("  [OCR carrusel] Sin imágenes capturadas via CDP.")
+            return []
+
+        print(f"  {len(carousel_requests)} imágenes del carrusel capturadas.")
+
+        # Descargar imágenes con requests usando referer TikTok
+        saved: list = []
+        req_headers = {
+            "Referer": "https://www.tiktok.com/",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+        }
+        import urllib.request
+        for i, (rid, img_url) in enumerate(carousel_requests.items()):
+            dest = os.path.join(tmpdir, f"img_{i:03d}.jpg")
+            try:
+                req = urllib.request.Request(img_url, headers=req_headers)
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    with open(dest, "wb") as f:
+                        f.write(resp.read())
+                if os.path.exists(dest) and os.path.getsize(dest) > 1000:
+                    saved.append(dest)
+            except Exception as e:
+                print(f"  img_{i} error: {e}")
+
+        return saved
+
+    except Exception as e:
+        print(f"  [OCR carrusel Playwright] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
 
 
 # ── OCR: frames de video ──────────────────────────────────────────────────────

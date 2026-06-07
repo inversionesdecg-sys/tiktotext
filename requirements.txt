@@ -3,5 +3,6 @@ yt-dlp
 requests
 playwright
 faster-whisper
+openai-whisper
 imageio[ffmpeg]
 rapidocr-onnxruntime

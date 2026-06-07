@@ -71,17 +71,33 @@ El resultado queda en `Desktop/tiktokfav/` listo para usar con cualquier IA.
 ## Instalación
 
 ```bash
-git clone https://github.com/tu-usuario/tiktotext.git
+git clone https://github.com/inversionesdecg-sys/tiktotext.git
 cd tiktotext
 pip install -r requirements.txt
 playwright install chromium
 ```
+
+> **Nota:** `rapidocr-onnxruntime` descarga sus modelos OCR (~30 MB) la primera vez que se usa un video con imágenes.
+> `faster-whisper` descarga el modelo Whisper elegido (~250 MB para `small`) en el primer uso.
 
 Descargá un modelo de Ollama:
 ```bash
 ollama pull mistral
 # o cualquier modelo que tengas: llama3, qwen2.5, deepseek-r1, etc.
 ```
+
+### Dependencias incluidas en requirements.txt
+
+| Paquete | Para qué |
+|---------|----------|
+| `yt-dlp` | Descargar audio/video/imágenes de TikTok y YouTube |
+| `faster-whisper` | Transcripción de voz local (preferido) |
+| `openai-whisper` | Transcripción de voz local (fallback) |
+| `rapidocr-onnxruntime` | OCR para carruseles y videos con texto en pantalla |
+| `imageio[ffmpeg]` | ffmpeg bundled — no requiere instalación global |
+| `playwright` | Captura de URLs de colecciones TikTok (headless) |
+| `TikTokApi` | Acceso a la API de TikTok |
+| `requests` | Llamadas a la API de Ollama |
 
 ---
 

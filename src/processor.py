@@ -129,7 +129,7 @@ def _save_markdown(folder: str, filename: str, url: str, description: str, summa
     os.makedirs(folder, exist_ok=True)
     filepath = os.path.join(folder, filename)
     desc_section = f"\n**Descripción del video:**\n{description}\n" if description else ""
-    with open(filepath, "w", encoding="utf-8") as f:
+    with open(filepath, "w", encoding="utf-8-sig") as f:
         f.write(f"# Resumen\n\n**URL:** {url}\n{desc_section}\n---\n\n{summary}\n")
     print(f"  Guardado: {filepath}")
 

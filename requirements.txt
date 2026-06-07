@@ -1,0 +1,7 @@
+TikTokApi
+yt-dlp
+requests
+playwright
+faster-whisper
+imageio[ffmpeg]
+rapidocr-onnxruntime

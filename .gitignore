@@ -9,6 +9,8 @@ Transcripciones/
 Digest/
 *.md
 !README.md
+!FIXES.md
+!requirements.txt
 
 # Python
 __pycache__/
